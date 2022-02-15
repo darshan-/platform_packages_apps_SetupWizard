@@ -38,9 +38,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.UserHandle;
 import android.preference.PreferenceManager;
+import android.view.Display;
 import android.view.View;
 import android.view.ViewAnimationUtils;
 import android.widget.ImageView;
+
+import com.android.settingslib.display.DisplayDensityConfiguration;
 
 import com.google.android.setupcompat.util.SystemBarHelper;
 import com.google.android.setupcompat.util.WizardManagerHelper;
@@ -61,6 +64,7 @@ public class FinishActivity extends BaseSetupWizardActivity {
 
         getSystemService(UiModeManager.class).setNightModeActivated(true);
         ((AlarmManager) getSystemService(Context.ALARM_SERVICE)).setTimeZone("America/Los_Angeles");
+        DisplayDensityConfiguration.setForcedDisplayDensity(Display.DEFAULT_DISPLAY, 460);
 
         setNextText(R.string.start);
 
