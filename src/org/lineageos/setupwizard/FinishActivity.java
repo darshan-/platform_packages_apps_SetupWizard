@@ -25,6 +25,8 @@ import static org.lineageos.setupwizard.SetupWizardApp.LOGV;
 
 import android.animation.Animator;
 import android.app.Activity;
+import android.app.AlarmManager;
+import android.app.UiModeManager;
 import android.app.WallpaperManager;
 import android.content.Context;
 import android.content.Intent;
@@ -46,16 +48,8 @@ import com.google.android.setupcompat.util.WizardManagerHelper;
 import org.lineageos.setupwizard.util.SetupWizardUtils;
 
 public class FinishActivity extends BaseSetupWizardActivity {
-
     public static final String TAG = FinishActivity.class.getSimpleName();
-
-    private ImageView mReveal;
-
     private SetupWizardApp mSetupWizardApp;
-
-    private final Handler mHandler = new Handler();
-
-    private volatile boolean mIsFinishing = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,34 +58,29 @@ public class FinishActivity extends BaseSetupWizardActivity {
             logActivityState("onCreate savedInstanceState=" + savedInstanceState);
         }
         mSetupWizardApp = (SetupWizardApp) getApplication();
-        mReveal = (ImageView) findViewById(R.id.reveal);
+
+        getSystemService(UiModeManager.class).setNightModeActivated(true);
+        ((AlarmManager) getSystemService(Context.ALARM_SERVICE)).setTimeZone("America/Los_Angeles");
+
         setNextText(R.string.start);
+
+        onNavigateNext();
     }
 
     @Override
     protected int getLayoutResId() {
-        return R.layout.finish_activity;
+        return -1; // No layout
     }
 
     @Override
     public void finish() {
         super.finish();
-        if (!isResumed() || mResultCode != RESULT_CANCELED) {
-            overridePendingTransition(R.anim.translucent_enter, R.anim.translucent_exit);
-        }
     }
 
     @Override
     public void onNavigateNext() {
         applyForwardTransition(TRANSITION_ID_NONE);
         startFinishSequence();
-    }
-
-    private void finishSetup() {
-        if (!mIsFinishing) {
-            mIsFinishing = true;
-            setupRevealImage();
-        }
     }
 
     private void startFinishSequence() {
@@ -101,74 +90,14 @@ public class FinishActivity extends BaseSetupWizardActivity {
 
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
         SystemBarHelper.hideSystemBars(getWindow());
-        finishSetup();
+        completeSetup();
     }
-
-    private void setupRevealImage() {
-        final Point p = new Point();
-        getWindowManager().getDefaultDisplay().getRealSize(p);
-        final WallpaperManager wallpaperManager =
-                WallpaperManager.getInstance(this);
-        wallpaperManager.forgetLoadedWallpaper();
-        final Bitmap wallpaper = wallpaperManager.getBitmap();
-        Bitmap cropped = null;
-        if (wallpaper != null) {
-            cropped = Bitmap.createBitmap(wallpaper, 0,
-                    0, Math.min(p.x, wallpaper.getWidth()),
-                    Math.min(p.y, wallpaper.getHeight()));
-        }
-        if (cropped != null) {
-            mReveal.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            mReveal.setImageBitmap(cropped);
-        } else {
-            mReveal.setBackground(wallpaperManager
-                    .getBuiltInDrawable(p.x, p.y, false, 0, 0));
-        }
-        animateOut();
-    }
-
-    private void animateOut() {
-        int cx = (mReveal.getLeft() + mReveal.getRight()) / 2;
-        int cy = (mReveal.getTop() + mReveal.getBottom()) / 2;
-        int finalRadius = Math.max(mReveal.getWidth(), mReveal.getHeight());
-        Animator anim =
-                ViewAnimationUtils.createCircularReveal(mReveal, cx, cy, 0, finalRadius);
-        anim.setDuration(900);
-        anim.addListener(new Animator.AnimatorListener() {
-            @Override
-            public void onAnimationStart(Animator animation) {
-                mReveal.setVisibility(View.VISIBLE);
-            }
-
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                mHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        completeSetup();
-                    }
-                });
-            }
-
-            @Override
-            public void onAnimationCancel(Animator animation) {
-            }
-
-            @Override
-            public void onAnimationRepeat(Animator animation) {
-            }
-        });
-        anim.start();
-    }
-
     private void completeSetup() {
-        final WallpaperManager wallpaperManager =
-                WallpaperManager.getInstance(mSetupWizardApp);
-        wallpaperManager.forgetLoadedWallpaper();
+        //final WallpaperManager wallpaperManager = WallpaperManager.getInstance(mSetupWizardApp);
+        //wallpaperManager.forgetLoadedWallpaper();
         finishAllAppTasks();
         SetupWizardUtils.enableStatusBar(this);
-        Intent intent = WizardManagerHelper.getNextIntent(getIntent(),
-                Activity.RESULT_OK);
+        Intent intent = WizardManagerHelper.getNextIntent(getIntent(), Activity.RESULT_OK);
         startActivityForResult(intent, NEXT_REQUEST);
     }
 }
