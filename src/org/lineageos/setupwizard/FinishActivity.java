@@ -74,6 +74,8 @@ public class FinishActivity extends BaseSetupWizardActivity {
         //Settings.Secure.putInt(cr, Settings.Secure.WAKE_GESTURE_ENABLED, 0);
         getSystemService(ColorDisplayManager.class).setColorMode(ColorDisplayManager.COLOR_MODE_NATURAL);
         Settings.Secure.putInt(cr, Settings.Secure.DOZE_PICK_UP_GESTURE, 0);
+        Settings.Secure.putInt(cr, Settings.Secure.DOZE_ENABLED, 0);
+        Settings.Secure.putInt(cr, Settings.Secure.CAMERA_DOUBLE_TAP_POWER_GESTURE_DISABLED, 1);
 
         onNavigateNext();
     }
