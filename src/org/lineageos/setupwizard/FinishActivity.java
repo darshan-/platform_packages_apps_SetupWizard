@@ -28,16 +28,19 @@ import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.UiModeManager;
 import android.app.WallpaperManager;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Point;
+import android.hardware.display.ColorDisplayManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.UserHandle;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
 import android.view.Display;
 import android.view.View;
 import android.view.ViewAnimationUtils;
@@ -62,11 +65,15 @@ public class FinishActivity extends BaseSetupWizardActivity {
         }
         mSetupWizardApp = (SetupWizardApp) getApplication();
 
+        ContentResolver cr = getContentResolver();
+
         getSystemService(UiModeManager.class).setNightModeActivated(true);
         ((AlarmManager) getSystemService(Context.ALARM_SERVICE)).setTimeZone("America/Los_Angeles");
         DisplayDensityConfiguration.setForcedDisplayDensity(Display.DEFAULT_DISPLAY, 460);
-
-        setNextText(R.string.start);
+        Settings.Secure.putInt(cr, Settings.Secure.DOZE_ALWAYS_ON, 1);
+        //Settings.Secure.putInt(cr, Settings.Secure.WAKE_GESTURE_ENABLED, 0);
+        getSystemService(ColorDisplayManager.class).setColorMode(ColorDisplayManager.COLOR_MODE_NATURAL);
+        Settings.Secure.putInt(cr, Settings.Secure.DOZE_PICK_UP_GESTURE, 0);
 
         onNavigateNext();
     }
