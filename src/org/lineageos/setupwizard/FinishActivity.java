@@ -61,6 +61,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 //import java.util.HashMap;
+//import java.util.Queue;
+import java.util.LinkedList;
 
 import org.lineageos.setupwizard.util.SetupWizardUtils;
 
@@ -79,6 +81,12 @@ public class FinishActivity extends BaseSetupWizardActivity {
     private static final String ACTION_INSTALL = "com.darshancomputing.install";
 
     private SetupWizardApp mSetupWizardApp;
+    private PackageInstaller pmInstaller;
+
+    //private static int installCount = 0;
+    //private Queue sessionQueue;
+    //private Queue<int> sessionQueue;
+    private LinkedList<Integer> sessionQueue;
 
     // Match order for these two, and keep in Graphene's recommended install order
     private static final String[] apkBasenames = {
@@ -89,14 +97,22 @@ public class FinishActivity extends BaseSetupWizardActivity {
         R.raw.com_google_android_gsf,
         R.raw.com_google_android_gms
     };
-    // private static final HashMap<String, Integer> fileRes;
-    // static {
-    //     fileRes = new HashMap<String, Integer>();
-    //     fileRes.put("com_google_android_gsf", R.raw.com_google_android_gsf);
-    //     fileRes.put("com_google_android_gms", R.raw.com_google_android_gms);
-    // }
 
-
+    // Match order for these two
+    private static final String[] vapkBasenames = {
+        "vending_0",
+        "vending_1",
+        "vending_2",
+        "vending_3",
+        "vending_4"
+    };
+    private static final int[] vapkResIds = {
+        R.raw.vending_0,
+        R.raw.vending_1,
+        R.raw.vending_2,
+        R.raw.vending_3,
+        R.raw.vending_4
+    };
 
     /*
 
@@ -112,15 +128,47 @@ In such a case that multiple packages need to be committed simultaneously, multi
             // For now, just log what we got.
             // Ultimately I may wait to call onNavigateNext() until success, and show error on failure.
             System.out.println("darshanos: pmInstallerReceiver got intent: " + intent);
+
+            if (! ACTION_INSTALL.equals(intent.getAction()))
+                return;
+
+            //installCount--;
+
+            //int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -99); // 0, -1 and small positive already used
+            // Ahem... What if... What if we're meant to assume success?  And that's why it's 0, which of course I first
+            //    typed, before it occurred to me a moment later that that was unsafe, and I should check if 0 was used,
+            //    and it was... for success...  Well, let's see how this goes:
+            int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, 0);
+            System.out.println("darshanos: install status: " + status);
+
+            String message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+            System.out.println("darshanos: install message: " + message);
+
+            if (status == PackageInstaller.STATUS_SUCCESS) {
+                if (sessionQueue.size() > 0) {
+                    System.out.println("darshanos: commiting next session because sessionQueue.size(): " + sessionQueue.size());
+                    //System.out.println("darshanos: committing next session.");
+                    commitSession(sessionQueue.remove());
+                } else {
+                    System.out.println("darshanos: all sessions commited; ending setup wizard.");
+                    //onNavigateNext();
+                }
+            } else {
+                System.out.println("darshanos: some status other than success; ending setup wizard.");
+                //onNavigateNext();
+            }
+
+            //System.out.println("darshanos: installCount: " + installCount);
+
+            //if (installCount == 0)
+            //    onNavigateNext();
         }
     };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (LOGV) {
-            logActivityState("onCreate savedInstanceState=" + savedInstanceState);
-        }
+        System.out.println("darshanos: FinishActivity.onCreate");
         mSetupWizardApp = (SetupWizardApp) getApplication();
 
         ContentResolver cr = getContentResolver();
@@ -140,26 +188,43 @@ In such a case that multiple packages need to be committed simultaneously, multi
 
         // Maybe wait for completion of each before initiating install of next?
 
-        for (int i = 0; i < apkResIds.length; i++)
-            installPackage(i);
+        //sessionQueue = new Queue<PackageInstaller.Session>();
+        //sessionQueue = new Queue<int>();
+        sessionQueue = new LinkedList<Integer>();
+        pmInstaller = getPackageManager().getPackageInstaller();
+        try {
+            for (int i = 0; i < apkResIds.length; i++)
+                installPackage(i);
+
+            installVending();
+        } catch (IOException ioe) {
+            System.out.println("darshanos: IOException setting up installation sessions: " + ioe);
+        }
+
+        System.out.println("darshanos: committing first session with full sessionQueue.size(): " + sessionQueue.size());
+        commitSession(sessionQueue.remove());
         //installPackage(getApkStream(i), apkBasenames[i].replace('_', '.') + ".apk");
         //installApk(i);
+    }
 
-        onNavigateNext();
+    @Override
+    public void onDestroy() {
+        unregisterReceiver(pmInstallerReceiver);
+        new Exception("Stack trace").printStackTrace();
+        System.out.println("darshanos: FinishActivity.onDestroy");
+        super.onDestroy();
     }
 
     @Override
     protected int getLayoutResId() {
-        return -1; // No layout
-    }
-
-    @Override
-    public void finish() {
-        super.finish();
+        return R.layout.finish_activity;
+        //return -1; // No layout
     }
 
     @Override
     public void onNavigateNext() {
+        System.out.println("darshanos: onNavigateNext");
+        //unregisterReceiver(pmInstallerReceiver);
         applyForwardTransition(TRANSITION_ID_NONE);
         startFinishSequence();
     }
@@ -173,163 +238,160 @@ In such a case that multiple packages need to be committed simultaneously, multi
         SystemBarHelper.hideSystemBars(getWindow());
         completeSetup();
     }
+
     private void completeSetup() {
         //final WallpaperManager wallpaperManager = WallpaperManager.getInstance(mSetupWizardApp);
-        //wallpaperManager.forgetLoadedWallpaper();
         finishAllAppTasks();
         SetupWizardUtils.enableStatusBar(this);
         Intent intent = WizardManagerHelper.getNextIntent(getIntent(), Activity.RESULT_OK);
         startActivityForResult(intent, NEXT_REQUEST);
     }
 
-    // F-Droid
-    // private void doPackageStage(Uri packageURI) {
-    //     final PackageManager pm = getPackageManager();
-    //     final PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(
-    //                                                                                      PackageInstaller.SessionParams.MODE_FULL_INSTALL);
-    //     final PackageInstaller packageInstaller = pm.getPackageInstaller();
-    //     PackageInstaller.Session session = null;
-    //     try {
-    //         final int sessionId = packageInstaller.createSession(params);
-    //         final byte[] buffer = new byte[65536];
-    //         session = packageInstaller.openSession(sessionId);
-    //         final InputStream in = getContentResolver().openInputStream(packageURI);
-    //         final OutputStream out = session.openWrite("PackageInstaller", 0, -1 /* sizeBytes, unknown */);
-    //         try {
-    //             int c;
-    //             while ((c = in.read(buffer)) != -1) {
-    //                 out.write(buffer, 0, c);
-    //             }
-    //             session.fsync(out);
-    //         } finally {
-    //             IoUtils.closeQuietly(in);
-    //             IoUtils.closeQuietly(out);
-    //         }
-    //         // Create a PendingIntent and use it to generate the IntentSender
-    //         Intent broadcastIntent = new Intent(BROADCAST_ACTION_INSTALL);
-    //         PendingIntent pendingIntent = PendingIntent.getBroadcast(
-    //                                                                  this /*context*/,
-    //                                                                  sessionId,
-    //                                                                  broadcastIntent,
-    //                                                                  PendingIntent.FLAG_UPDATE_CURRENT);
-    //         session.commit(pendingIntent.getIntentSender());
-    //     } catch (IOException e) {
-    //         Log.d(TAG, "Failure", e);
-    //         Toast.makeText(this, e.getLocalizedMessage(), Toast.LENGTH_LONG).show();
-    //     } finally {
-    //         IoUtils.closeQuietly(session);
-    //     }
-    // }
-
-    // Android
-    // private void startInstall() {
-    //     Intent newIntent = new Intent();
-    //     newIntent.putExtra(PackageInstaller.PackageUtil.INTENT_ATTR_APPLICATION_INFO, mPkgInfo.applicationInfo);
-    //     newIntent.setData(mPackageURI);
-    //     newIntent.setClass(this, InstallAppProgress.class);
-    //     newIntent.putExtra(InstallAppProgress.EXTRA_MANIFEST_DIGEST, mPkgDigest);
-    //     newIntent.putExtra(InstallAppProgress.EXTRA_INSTALL_FLOW_ANALYTICS, mInstallFlowAnalytics);
-    //     String installerPackageName = getIntent().getStringExtra(Intent.EXTRA_INSTALLER_PACKAGE_NAME);
-    //     if (mOriginatingURI != null) {
-    //         newIntent.putExtra(Intent.EXTRA_ORIGINATING_URI, mOriginatingURI);
-    //     }
-    //     if (mReferrerURI != null) {
-    //         newIntent.putExtra(Intent.EXTRA_REFERRER, mReferrerURI);
-    //     }
-    //     if (mOriginatingUid != VerificationParams.NO_UID) {
-    //         newIntent.putExtra(Intent.EXTRA_ORIGINATING_UID, mOriginatingUid);
-    //     }
-    //     if (installerPackageName != null) {
-    //         newIntent.putExtra(Intent.EXTRA_INSTALLER_PACKAGE_NAME, installerPackageName);
-    //     }
-    //     if (getIntent().getBooleanExtra(Intent.EXTRA_RETURN_RESULT, false)) {
-    //         newIntent.putExtra(Intent.EXTRA_RETURN_RESULT, true);
-    //         newIntent.addFlags(Intent.FLAG_ACTIVITY_FORWARD_RESULT);
-    //     }
-
-    //     startActivity(newIntent);
-    // }
-
-    // https://stackoverflow.com/a/4605040/1427098
-    // Nope, still uses PackageUtil, I noticed as soon as I pasted it.
-    // private void installAPKs() {
-    //     Intent newIntent = new Intent();
-    //     newIntent.putExtra(PackageUtil.INTENT_ATTR_APPLICATION_INFO, mPkgInfo.applicationInfo);
-    //     newIntent.setData(mPackageURI);
-    //     newIntent.setClass(this, InstallAppProgress.class);
-    //     String installerPackageName = getIntent().getStringExtra(Intent.EXTRA_INSTALLER_PACKAGE_NAME);
-    //     if (installerPackageName != null) {
-    //         newIntent.putExtra(Intent.EXTRA_INSTALLER_PACKAGE_NAME, installerPackageName);
-    //     }
-    //     startActivity(newIntent);
-    // }
-
     // Based on https://stackoverflow.com/a/37153867/1427098
-    // My preference would be to catch the IOException here...
-    // May need to set Wizard up to be device owner, but I'm hoping being a system app is enough.
-    //private boolean installPackage(InputStream in, String packageName) throws IOException {
-    private void installPackage(int p) {
-        String packageName = apkBasenames[p].replace('_', '.');
-        InputStream in = getApkStream(p);
+    private void installPackage(int p) throws IOException {
+        //InputStream in = getApkStream(p);
+        // int sid = makeInstallSession();
+        // PackageInstaller.Session session = pmInstaller.openSession(sid);
+        // addApkToSession(session, in);
 
-        PackageInstaller pmInstaller = getPackageManager().getPackageInstaller();
-        int mode = PackageInstaller.SessionParams.MODE_FULL_INSTALL;
-        PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(mode);
-        params.setAppPackageName(packageName);
-
-        try {
-            int sid = pmInstaller.createSession(params);
-            PackageInstaller.Session session = pmInstaller.openSession(sid);
-            OutputStream out = session.openWrite("darshanos", 0, -1);
-            byte[] buffer = new byte[65536];
-            int c;
-
-            while ((c = in.read(buffer)) != -1) {
-                out.write(buffer, 0, c);
-            }
-
-            session.fsync(out);
-            in.close();
-            out.close();
-
-            PendingIntent pi = PendingIntent.getBroadcast(this, sid, new Intent(ACTION_INSTALL),
-                                                          PendingIntent.FLAG_IMMUTABLE);
-            session.commit(pi.getIntentSender());
-        } catch (IOException ioe) {
-            System.out.println("darshanos: IOException setting up installation session: " + ioe);
-        }
-
-
-        // Oh, I think this is an action to have called upon completion, so maybe I can skip it, or else
-        //  I'll have to set something up here for that.
-        //Intent i = new Intent(ACTION_INSTALL);
-        //PendingIntent pi = PendingIntent.getBroadcast(this, sessionId, i, 0);
+        int sid = makeSession(getApkStream(p));
+        //PackageInstaller.Session session = pmInstaller.openSession(sid);w
+        //sessionQueue.add(session);
+        sessionQueue.add(sid);
+        System.out.println("darshanos: Addeded normal package p=" + p + " with sid: " + sid);
+        System.out.println("darshanos: sessionQueue.size(): " + sessionQueue.size());
+        //PendingIntent pi = PendingIntent.getBroadcast(this, sid, new Intent(ACTION_INSTALL), PendingIntent.FLAG_IMMUTABLE);
+        //installCount++;
         //session.commit(pi.getIntentSender());
     }
 
-    private void installVending() {
+    private void commitSession(int sid) {
+        try {
+            PackageInstaller.Session session = pmInstaller.openSession(sid);
+            PendingIntent pi = PendingIntent.getBroadcast(this, sid, new Intent(ACTION_INSTALL), PendingIntent.FLAG_IMMUTABLE);
+            session.commit(pi.getIntentSender());
+        } catch (IOException ioe) {
+            System.out.println("darshanos: IOException committing installation sessions: " + ioe);
+        }
     }
 
-    // private InputStream getStream(String basename) {
-    //     try {
-    //         return openFileInput(basename + ".apk");
-    //     } catch (java.io.FileNotFoundException e) {
-    //         Integer res = fileRes.get(basename);
-    //         if (res != null)
-    //             return c.getResources().openRawResource(res);
-    //         else
-    //             return null;
-    //     }
+    // private void installPackage(int p) throws IOException {
+    //     InputStream in = getApkStream(p);
+    //     //PackageInstaller.Session session = makeInstallSession();
+    //     int sid = makeInstallSession();
+    //     PackageInstaller.Session session = pmInstaller.openSession(sid);
+
+    //     addApkToSession(session, in);
+
+    //     PendingIntent pi = PendingIntent.getBroadcast(this, sid, new Intent(ACTION_INSTALL),
+    //                                                   PendingIntent.FLAG_IMMUTABLE);
+    //     session.commit(pi.getIntentSender());
     // }
 
-    //private void installApk(int i) {
-    //}
+    // private PackageInstaller.Session makeInstallSession() throws IOException {
+    //     PackageInstaller pmInstaller = getPackageManager().getPackageInstaller();
+    //     int mode = PackageInstaller.SessionParams.MODE_FULL_INSTALL;
+    //     PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(mode);
+    //     int sid = pmInstaller.createSession(params);
+    //     return pmInstaller.openSession(sid);
+    // }
+
+    // Call needs both Session id and Session, but we can't get an id from a Session (Session doesn't know its
+    //   own id), but we *can* get a session from an id, so it's dumb, but I guess best, to return the id.
+    private int makeInstallSession() throws IOException {
+        PackageInstaller.SessionParams params = makeIncompleteInstallSession();
+        return pmInstaller.createSession(params);
+    }
+
+    // private int makeInstallSession() throws IOException {
+    //     PackageInstaller pmInstaller = getPackageManager().getPackageInstaller();
+    //     int mode = PackageInstaller.SessionParams.MODE_FULL_INSTALL;
+    //     PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(mode);
+    //     return pmInstaller.createSession(params);
+    // }
+
+    private PackageInstaller.SessionParams makeIncompleteInstallSession() throws IOException {
+        int mode = PackageInstaller.SessionParams.MODE_FULL_INSTALL;
+        return new PackageInstaller.SessionParams(mode);
+    }
+
+    private int makeParentInstallSession() throws IOException {
+        PackageInstaller.SessionParams params = makeIncompleteInstallSession();
+        params.setMultiPackage();
+        return pmInstaller.createSession(params);
+    }
+
+    private void addApkToSession(PackageInstaller.Session session, InputStream in) throws IOException {
+        OutputStream out = session.openWrite("darshanos", 0, -1);
+        byte[] buffer = new byte[65536];
+        int c;
+
+        while ((c = in.read(buffer)) != -1) {
+            out.write(buffer, 0, c);
+        }
+
+        session.fsync(out);
+        in.close();
+        out.close();
+    }
+
+    private int makeSession(InputStream in) throws IOException {
+        int sid = makeInstallSession();
+        PackageInstaller.Session session = pmInstaller.openSession(sid);
+
+        addApkToSession(session, in);
+        return sid;
+    }
+
+    // private int addVendingPackage(int p) {
+    //     int sid = makeSession(getVapkStream(p));
+    //     InputStream in = getVapkStream(p);
+    //     int sid = makeInstallSession();
+    //     PackageInstaller.Session session = pmInstaller.openSession(sid);
+
+    //     addApkToSession(session, in);
+    //     return sid;
+    // }
+
+    // private int addVendingPackage(int p) {
+    //     InputStream in = getVapkStream(p);
+    //     int sid = makeInstallSession();
+    //     PackageInstaller.Session session = pmInstaller.openSession(sid);
+
+    //     addApkToSession(session, in);
+    //     return sid;
+    // }
+
+    private void installVending() throws IOException {
+        int psid = makeParentInstallSession();
+        PackageInstaller.Session psession = pmInstaller.openSession(psid);
+
+        for (int i = 0; i < vapkResIds.length; i++) {
+            int sid = makeSession(getVapkStream(i));
+            psession.addChildSessionId(sid);
+        }
+
+        //PendingIntent pi = PendingIntent.getBroadcast(this, psid, new Intent(ACTION_INSTALL), PendingIntent.FLAG_IMMUTABLE);
+        //installCount++;
+        //psession.commit(pi.getIntentSender());
+        sessionQueue.add(psid);
+        System.out.println("darshanos: Addeded vending package with sid: " + psid);
+        System.out.println("darshanos: sessionQueue.size(): " + sessionQueue.size());
+    }
 
     private InputStream getApkStream(int i) {
         try {
             return openFileInput(apkBasenames[i] + ".apk");
         } catch (java.io.FileNotFoundException e) {
             return getResources().openRawResource(apkResIds[i]);
+        }
+    }
+
+    private InputStream getVapkStream(int i) {
+        try {
+            return openFileInput(vapkBasenames[i] + ".apk");
+        } catch (java.io.FileNotFoundException e) {
+            return getResources().openRawResource(vapkResIds[i]);
         }
     }
 }
